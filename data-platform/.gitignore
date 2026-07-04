@@ -6,3 +6,7 @@ data/
 
 # Metadados do macOS
 .DS_Store
+
+# Cache e bytecode do Python
+__pycache__/
+*.py[cod]
