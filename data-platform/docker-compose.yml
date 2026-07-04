@@ -121,6 +121,8 @@ services:
       - "${JUPYTER_PORT:-8888}:8888"
     volumes:
       - ./DataPipeline:/home/jovyan/work
+      - ./DataPipeline:/home/jovyan/project/DataPipeline
+      - ./Model:/home/jovyan/project/Model
     environment:
       - JUPYTER_ENABLE_LAB=yes
       - JUPYTER_TOKEN=${JUPYTER_TOKEN}
