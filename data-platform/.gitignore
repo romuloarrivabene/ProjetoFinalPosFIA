@@ -1,2 +1,8 @@
 DataPipeline/abt.csv
 DataPipeline/exp_analysis.executed.ipynb
+
+# Datasets brutos locais (Home Credit)
+data/
+
+# Metadados do macOS
+.DS_Store
