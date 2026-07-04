@@ -9,6 +9,18 @@ PARA INICIAR O CONTAINER:
 cd data-platform
 docker compose up -d --build
 
+Para subir um ambiente isolado de validação, com nomes, volume e portas
+próprios, utilize:
+
+docker compose --env-file compose.clean.env up -d --build
+
+Nesse ambiente, os acessos são:
+
+- Airflow: http://localhost:18080/
+- Jupyter: http://localhost:18888/
+- Metabase: http://localhost:13000/
+- PostgreSQL: localhost:55432
+
 ###############################################
 PARA ACESSAR O CONTAINER DO AIRFLOW:
 ###############################################
@@ -35,4 +47,3 @@ ACESSE O JUPYTER
 http://localhost:8888/
 
 TOKEN: analytics
-
