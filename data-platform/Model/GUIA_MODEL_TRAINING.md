@@ -1162,3 +1162,23 @@ approve | manual_review | reject
 ```
 
 O modelo não substitui toda a operação de crédito. Ele adiciona uma avaliação de risco reproduzível, que deve ser combinada com regras cadastrais, prevenção a fraude, exigências legais e supervisão humana.
+
+## 23. Otimização de hiperparâmetros
+
+O notebook compara automaticamente diferentes configurações da regressão logística com `GridSearchCV`. A busca testa:
+
+- `C`: controla a intensidade da regularização;
+- `class_weight`: compara o aprendizado normal com o balanceamento automático das classes.
+
+Cada combinação é avaliada por ROC AUC em cinco divisões estratificadas do conjunto de treino. Como o pré-processamento faz parte do `Pipeline`, imputação, escala e codificação são reaprendidas dentro de cada divisão, evitando vazamento de dados.
+
+```python
+param_grid = {
+    "classifier__C": [0.01, 0.1, 1.0, 10.0, 100.0],
+    "classifier__class_weight": [None, "balanced"],
+}
+```
+
+O conjunto de teste não participa da escolha dos hiperparâmetros. Ele é utilizado apenas depois da busca, para comparar a configuração anterior com o modelo selecionado. O artefato final registra `best_params`, `cv_folds` e o ROC AUC médio da validação cruzada, além das métricas finais de teste.
+
+Uma melhora não é garantida: a busca fornece uma escolha mais rigorosa e reproduzível, e a comparação final revela se houve ganho fora da validação cruzada.
