@@ -1,6 +1,7 @@
 FROM jupyter/datascience-notebook:latest
 
-COPY Model/api/requirements.txt /tmp/Model/api/requirements.txt
-COPY Model/test-requirements.txt /tmp/Model/test-requirements.txt
+COPY MLOps/app/api/requirements.txt /tmp/MLOps/app/api/requirements.txt
+COPY MLOps/test-requirements.txt /tmp/MLOps/test-requirements.txt
 
-RUN pip install --no-cache-dir -r /tmp/Model/test-requirements.txt
+WORKDIR /tmp/MLOps
+RUN pip install --no-cache-dir -r /tmp/MLOps/test-requirements.txt

@@ -1,0 +1,102 @@
+{
+  "metadata": {
+    "project": "Predição de risco de crédito",
+    "component": "Model",
+    "version": "1.0.0",
+    "last_updated": "2026-07-06",
+    "description": "Configuração do treinamento, avaliação e inferência do modelo.",
+    "algorithm": "LogisticRegression",
+    "problem_type": "binary_classification",
+    "positive_class": 1,
+    "positive_class_description": "cliente inadimplente",
+    "training_dataset": "Dados/abt.csv",
+    "artifact": "Model/artifacts/logistic_regression_abt.joblib"
+  },
+  "variables": {
+    "identifier": "sk_id_curr",
+    "target": "target",
+    "excluded_from_training": [
+      "sk_id_curr",
+      "target"
+    ],
+    "input_features": [
+      "ext_source_2",
+      "region_rating_client",
+      "region_rating_client_w_city",
+      "days_last_phone_change",
+      "days_id_publish",
+      "days_registration",
+      "reg_city_not_work_city",
+      "reg_city_not_live_city",
+      "live_city_not_work_city",
+      "own_car_age",
+      "def_30_cnt_social_circle",
+      "def_60_cnt_social_circle",
+      "amt_req_credit_bureau_year",
+      "cnt_children",
+      "cnt_fam_members",
+      "amt_income_total",
+      "amt_credit",
+      "amt_annuity",
+      "amt_goods_price",
+      "occupation_type",
+      "organization_type",
+      "name_income_type",
+      "name_education_type",
+      "code_gender",
+      "age",
+      "years_employed",
+      "prev_refused_rate",
+      "bureau_avg_days_credit",
+      "bureau_last_days_credit",
+      "bureau_active_rate",
+      "bureau_active_count",
+      "bureau_closed_rate"
+    ]
+  },
+  "parameters": {
+    "split": {
+      "test_size": 0.2,
+      "stratify": true,
+      "random_state": 42
+    },
+    "preprocessing": {
+      "numeric_imputer": "median",
+      "numeric_scaler": "StandardScaler",
+      "categorical_imputer": "most_frequent",
+      "categorical_encoder": "OneHotEncoder",
+      "one_hot_handle_unknown": "ignore",
+      "one_hot_min_frequency": 20
+    },
+    "classifier": {
+      "solver": "newton-cholesky",
+      "max_iter": 100,
+      "random_state": 42
+    },
+    "hyperparameter_search": {
+      "method": "GridSearchCV",
+      "scoring": "roc_auc",
+      "cv_folds": 5,
+      "n_jobs": -1,
+      "classifier__C": [0.01, 0.1, 1.0, 10.0, 100.0],
+      "classifier__class_weight": [null, "balanced"]
+    },
+    "inference": {
+      "decision_threshold": 0.5
+    }
+  },
+  "model_results": {
+    "best_parameters": {
+      "classifier__C": 0.1,
+      "classifier__class_weight": "balanced"
+    },
+    "test_metrics": {
+      "roc_auc": 0.7339467823813353,
+      "average_precision": 0.21107582551930984
+    },
+    "cross_validation_metrics": {
+      "roc_auc": 0.7237772549055964,
+      "folds": 5
+    }
+  }
+}

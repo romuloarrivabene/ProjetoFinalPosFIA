@@ -1,19 +1,64 @@
 {
-  "database": {
-    "input_table": "application_train",
-    "output_table": "application_clean",
-    "input_prev_table": "previous_application",
-    "output_prev_table": "previous_application_clean",
-    "abt_table": "application_abt"
+  "metadata": {
+    "project": "Predição de risco de crédito",
+    "component": "DataPipeline",
+    "version": "1.0.0",
+    "last_updated": "2026-07-06",
+    "description": "Configuração da limpeza, padronização e construção da ABT.",
+    "data_source": "Home Credit Default Risk",
+    "orchestrator": "Apache Airflow",
+    "storage": "PostgreSQL",
+    "primary_key": "sk_id_curr",
+    "target": "target"
   },
-  "cleaning_parameters": {
-    "chunk_size": 50000,
-    "days_employed_anomaly": 365243,
-    "columns_to_absolute": [
+  "variables": {
+    "identifier": "sk_id_curr",
+    "target": "target",
+    "date_like_columns_to_absolute": [
       "days_birth",
       "days_employed",
       "days_registration",
       "days_id_publish"
+    ],
+    "previous_application_columns": [
+      "sk_id_curr",
+      "sk_id_prev",
+      "name_contract_status",
+      "amt_application"
+    ],
+    "derived_features": [
+      "days_employed_anom",
+      "fe_credit_income_percent",
+      "fe_annuity_income_percent",
+      "fe_income_per_person",
+      "prev_contract_count",
+      "prev_refused_count",
+      "prev_avg_amt_approved",
+      "prev_avg_amt_refused"
     ]
+  },
+  "parameters": {
+    "database": {
+      "connection_id": "postgres_data_db",
+      "input_table": "application_train",
+      "output_table": "application_clean",
+      "input_previous_table": "previous_application",
+      "output_previous_table": "previous_application_clean",
+      "abt_table": "application_abt"
+    },
+    "cleaning": {
+      "chunk_size": 50000,
+      "days_employed_anomaly": 365243,
+      "previous_application_negative_amount_fill": 0,
+      "strip_text_columns": true
+    },
+    "feature_engineering": {
+      "income_zero_replacement": 0.001,
+      "family_members_missing_fill": 1,
+      "family_members_zero_replacement": 1
+    },
+    "output": {
+      "abt_csv": "Dados/abt.csv"
+    }
   }
 }

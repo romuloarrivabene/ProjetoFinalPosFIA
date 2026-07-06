@@ -1,6 +1,6 @@
 import unittest
 
-from api.credit_policy import CreditPolicy
+from MLOps.app.api.credit_policy import CreditPolicy
 
 
 class CreditPolicyTest(unittest.TestCase):

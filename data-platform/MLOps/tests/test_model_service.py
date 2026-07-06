@@ -3,21 +3,21 @@ from pathlib import Path
 
 import pandas as pd
 
-from api.model_service import ModelInputError, PredictionService
+from MLOps.app.api.model_service import ModelInputError, PredictionService
 
 
-MODEL_DIR = Path(__file__).resolve().parents[1]
+DATA_PLATFORM_DIR = Path(__file__).resolve().parents[2]
 
 
 class PredictionServiceTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.service = PredictionService(
-            MODEL_DIR / "artifacts" / "logistic_regression_abt.joblib"
+            DATA_PLATFORM_DIR / "Model" / "artifacts" / "logistic_regression_abt.joblib"
         )
         cls.service.load()
         abt = pd.read_csv(
-            MODEL_DIR.parent / "DataPipeline" / "abt.csv",
+            DATA_PLATFORM_DIR / "Dados" / "abt.csv",
             nrows=1,
         )
         cls.features = abt.drop(columns=["sk_id_curr", "target"]).iloc[0].to_dict()

@@ -1,0 +1,6 @@
+-r Model/requirements.txt
+-r MLOps/app/api/requirements.txt
+-r MLOps/app/frontend/requirements.txt
+
+pytest>=8,<9
+httpx>=0.27,<1

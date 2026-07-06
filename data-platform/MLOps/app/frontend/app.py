@@ -1,12 +1,19 @@
 """Interface Streamlit para a API de risco de crédito."""
 
 import os
+import sys
+from pathlib import Path
 from typing import Any
 
 import requests
 import streamlit as st
 
-from frontend.field_config import FIELDS, GROUPS, FieldConfig
+DATA_PLATFORM_DIR = Path(__file__).resolve().parents[3]
+if str(DATA_PLATFORM_DIR) not in sys.path:
+    # O Streamlit executa o arquivo como script e não inclui a raiz do projeto.
+    sys.path.insert(0, str(DATA_PLATFORM_DIR))
+
+from MLOps.app.frontend.field_config import FIELDS, GROUPS, FieldConfig
 
 
 DEFAULT_API_URL = os.getenv("CREDIT_API_URL", "http://localhost:8000")

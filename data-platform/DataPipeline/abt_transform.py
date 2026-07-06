@@ -10,13 +10,17 @@ def load_config(config_path: str) -> dict:
         return json.load(f)
 
 
-def build_features(df: pd.DataFrame) -> pd.DataFrame:
+def build_features(df: pd.DataFrame, config: dict) -> pd.DataFrame:
     """Gera novas variáveis explicativas (Engenharia de Features) para a ABT."""
     df_features = df.copy()
 
+    params = config["parameters"]["feature_engineering"]
+
     # Evitando divisão por zero
     if "amt_income_total" in df_features.columns:
-        df_features["amt_income_total"] = df_features["amt_income_total"].replace(0, 0.001)
+        df_features["amt_income_total"] = df_features["amt_income_total"].replace(
+            0, params["income_zero_replacement"]
+        )
 
     if "amt_credit" in df_features.columns and "amt_income_total" in df_features.columns:
         df_features["fe_credit_income_percent"] = (df_features["amt_credit"] / df_features["amt_income_total"])
@@ -25,7 +29,11 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
         df_features["fe_annuity_income_percent"] = (df_features["amt_annuity"] / df_features["amt_income_total"])
 
     if "cnt_fam_members" in df_features.columns and "amt_income_total" in df_features.columns:
-        df_features["cnt_fam_members"] = df_features["cnt_fam_members"].fillna(1).replace(0, 1)
+        df_features["cnt_fam_members"] = (
+            df_features["cnt_fam_members"]
+            .fillna(params["family_members_missing_fill"])
+            .replace(0, params["family_members_zero_replacement"])
+        )
         df_features["fe_income_per_person"] = (df_features["amt_income_total"] / df_features["cnt_fam_members"])
 
     return df_features
@@ -59,9 +67,11 @@ def run_abt_generation(conn_id: str):
     conn = pg_hook.get_conn()
     cursor = conn.cursor()
 
-    input_table = config["database"]["output_table"]
-    output_table = config["database"]["abt_table"]
-    chunk_size = config["cleaning_parameters"]["chunk_size"]
+    database = config["parameters"]["database"]
+    input_table = database["output_table"]
+    output_table = database["abt_table"]
+    previous_table = database["output_previous_table"]
+    chunk_size = config["parameters"]["cleaning"]["chunk_size"]
 
     print(f"Iniciando a construção da ABT rica com dados de 'previous_application'...")
 
@@ -87,7 +97,7 @@ def run_abt_generation(conn_id: str):
                 
                 -- Média dos valores dos contratos que foram recusados
                 AVG(CASE WHEN name_contract_status = 'Refused' THEN amt_application END) AS prev_avg_amt_refused
-            FROM previous_application_clean
+            FROM "{previous_table}"
             GROUP BY sk_id_curr
         ) prev ON app.sk_id_curr = prev.sk_id_curr
         LIMIT {chunk_size} OFFSET %s;
@@ -101,7 +111,7 @@ def run_abt_generation(conn_id: str):
             break
 
         print(f"Processando lote enriquecido (Offset: {offset}) para a ABT...")
-        abt_chunk = build_features(chunk_df)
+        abt_chunk = build_features(chunk_df, config)
 
         if is_first_chunk:
             create_abt_table_schema(cursor, abt_chunk, output_table)

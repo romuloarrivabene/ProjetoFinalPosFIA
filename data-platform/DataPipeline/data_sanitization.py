@@ -11,13 +11,14 @@ def load_config(config_path: str) -> dict:
 
 def sanitize_data(df: pd.DataFrame, config: dict) -> pd.DataFrame:
     df_clean = df.copy()
-    params = config["cleaning_parameters"]
+    params = config["parameters"]["cleaning"]
+    columns_to_absolute = config["variables"]["date_like_columns_to_absolute"]
 
     if "days_employed" in df_clean.columns:
         df_clean["days_employed_anom"] = (df_clean["days_employed"] == params["days_employed_anomaly"]).astype(int)
         df_clean["days_employed"] = df_clean["days_employed"].replace(params["days_employed_anomaly"], np.nan)
 
-    for col in params["columns_to_absolute"]:
+    for col in columns_to_absolute:
         if col in df_clean.columns:
             df_clean[col] = np.abs(df_clean[col])
 
@@ -53,9 +54,10 @@ def run_sanitization(conn_id: str):
     conn = pg_hook.get_conn()
     cursor = conn.cursor()
 
-    input_table = config["database"]["input_table"]
-    output_table = config["database"]["output_table"]
-    chunk_size = config["cleaning_parameters"]["chunk_size"]
+    database = config["parameters"]["database"]
+    input_table = database["input_table"]
+    output_table = database["output_table"]
+    chunk_size = config["parameters"]["cleaning"]["chunk_size"]
 
     print(f"Preparando tabela de destino '{output_table}'...")
     create_clean_table_schema(cursor, input_table, output_table)
@@ -90,7 +92,7 @@ def run_sanitization(conn_id: str):
     print("--- Pipeline de sanitização finalizado com sucesso! ---")
 
 
-def sanitize_prev_data(df: pd.DataFrame) -> pd.DataFrame:
+def sanitize_prev_data(df: pd.DataFrame, config: dict) -> pd.DataFrame:
     df_clean = df.copy()
     
     # 1. Padroniza colunas de texto cruciais
@@ -99,8 +101,15 @@ def sanitize_prev_data(df: pd.DataFrame) -> pd.DataFrame:
         
     # 2. Trata valores nulos ou negativos no valor pedido (amt_application)
     if "amt_application" in df_clean.columns:
-        df_clean["amt_application"] = df_clean["amt_application"].fillna(0)
-        df_clean["amt_application"] = np.where(df_clean["amt_application"] < 0, 0, df_clean["amt_application"])
+        fill_value = config["parameters"]["cleaning"][
+            "previous_application_negative_amount_fill"
+        ]
+        df_clean["amt_application"] = df_clean["amt_application"].fillna(fill_value)
+        df_clean["amt_application"] = np.where(
+            df_clean["amt_application"] < 0,
+            fill_value,
+            df_clean["amt_application"],
+        )
         
     return df_clean
 
@@ -114,9 +123,10 @@ def run_prev_sanitization(conn_id: str):
     conn = pg_hook.get_conn()
     cursor = conn.cursor()
 
-    input_table = config["database"]["input_prev_table"]
-    output_table = config["database"]["output_prev_table"]
-    chunk_size = config["cleaning_parameters"]["chunk_size"]
+    database = config["parameters"]["database"]
+    input_table = database["input_previous_table"]
+    output_table = database["output_previous_table"]
+    chunk_size = config["parameters"]["cleaning"]["chunk_size"]
 
     print(f"Preparando tabela de destino histórica '{output_table}'...")
     cursor.execute(f'DROP TABLE IF EXISTS "{output_table}" CASCADE;')
@@ -133,7 +143,7 @@ def run_prev_sanitization(conn_id: str):
         if chunk_df.empty:
             break
 
-        cleaned_df = sanitize_prev_data(chunk_df)
+        cleaned_df = sanitize_prev_data(chunk_df, config)
 
         output = io.StringIO()
         cleaned_df.to_csv(output, sep="\t", header=False, index=False)

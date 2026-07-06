@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-MODEL_DIR = Path(__file__).resolve().parents[1]
+DATA_PLATFORM_DIR = Path(__file__).resolve().parents[3]
 
 
 @dataclass(frozen=True)
@@ -11,7 +11,7 @@ class Settings:
     model_path: Path = Path(
         os.getenv(
             "MODEL_PATH",
-            str(MODEL_DIR / "artifacts" / "logistic_regression_abt.joblib"),
+            str(DATA_PLATFORM_DIR / "Model" / "artifacts" / "logistic_regression_abt.joblib"),
         )
     )
     database_url: str = os.getenv(

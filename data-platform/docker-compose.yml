@@ -42,7 +42,11 @@ services:
       _AIRFLOW_WWW_USER_LASTNAME: User
       _AIRFLOW_WWW_USER_ROLE: Admin
       _AIRFLOW_WWW_USER_EMAIL: admin@example.com
-    command: bash -c "airflow db migrate && airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com"
+    command: >
+      bash -c "airflow db migrate &&
+      (airflow users list | grep -q 'admin' ||
+      airflow users create --username admin --password admin
+      --firstname Admin --lastname User --role Admin --email admin@example.com)"
 
   # ---------------------------------------------------------------------------
   # AIRFLOW - WEBSERVER (Interface Gráfica na porta 8080)
@@ -64,6 +68,7 @@ services:
     command: webserver
     volumes:
       - ./airflow/dags:/opt/airflow/dags
+      - ./MLOps:/opt/MLOps:ro
       - ./DataPipeline:/opt/airflow/DataPipeline
       - ./data/csv:/opt/airflow/data/csv:ro
       - ./Model:/opt/airflow/modelos
@@ -88,6 +93,7 @@ services:
     command: scheduler
     volumes:
       - ./airflow/dags:/opt/airflow/dags
+      - ./MLOps:/opt/MLOps:ro
       - ./DataPipeline:/opt/airflow/DataPipeline
       - ./data/csv:/opt/airflow/data/csv:ro
       - ./Model:/opt/airflow/modelos
@@ -124,7 +130,9 @@ services:
     volumes:
       - ./DataPipeline:/home/jovyan/work
       - ./DataPipeline:/home/jovyan/project/DataPipeline
+      - ./Dados:/home/jovyan/project/Dados
       - ./Model:/home/jovyan/project/Model
+      - ./MLOps:/home/jovyan/project/MLOps
     environment:
       - JUPYTER_ENABLE_LAB=yes
       - JUPYTER_TOKEN=${JUPYTER_TOKEN}
@@ -132,6 +140,37 @@ services:
     # Altere para a mesma rede que o seu Postgres e Airflow usam:
     depends_on:
       - postgres
+
+  # ---------------------------------------------------------------------------
+  # MLOPS - API DE INFERÊNCIA
+  # ---------------------------------------------------------------------------
+  credit-api:
+    build:
+      context: .
+      dockerfile: MLOps/Dockerfile.api
+    ports:
+      - "${CREDIT_API_PORT:-8000}:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg2://airflow:airflow@postgres:5432/data
+      CREDIT_APPROVE_MAX_SCORE: "0.35"
+      CREDIT_MANUAL_REVIEW_MAX_SCORE: "0.65"
+      CREDIT_POLICY_VERSION: demo-v1
+    depends_on:
+      - postgres
+
+  # ---------------------------------------------------------------------------
+  # MLOPS - INTERFACE DE DEMONSTRAÇÃO
+  # ---------------------------------------------------------------------------
+  credit-frontend:
+    build:
+      context: .
+      dockerfile: MLOps/Dockerfile.frontend
+    ports:
+      - "${CREDIT_FRONTEND_PORT:-8501}:8501"
+    environment:
+      CREDIT_API_URL: http://credit-api:8000
+    depends_on:
+      - credit-api
 
 volumes:
   pgdata:
