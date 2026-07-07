@@ -11,7 +11,7 @@ class PredictScriptTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.artifact = load_artifact(
-            DATA_PLATFORM_DIR / "Model" / "artifacts" / "logistic_regression_abt.joblib"
+            DATA_PLATFORM_DIR / "Model" / "artifacts" / "logistic_regression_abt.pkl"
         )
 
     def test_predicts_csv_row(self) -> None:

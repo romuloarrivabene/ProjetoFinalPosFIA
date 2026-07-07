@@ -13,10 +13,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import pickle
 from pathlib import Path
 from typing import Any
 
-import joblib
 import pandas as pd
 
 
@@ -46,7 +46,8 @@ def load_artifact(model_path: Path | None = None) -> dict[str, Any]:
     if not model_path.is_file():
         raise FileNotFoundError(f"Modelo não encontrado: {model_path}")
 
-    artifact = joblib.load(model_path)
+    with model_path.open("rb") as file:
+        artifact = pickle.load(file)
     required = {"model", "decision_threshold", "input_features"}
     missing = required.difference(artifact)
     if missing:

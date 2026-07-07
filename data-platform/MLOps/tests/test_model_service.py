@@ -13,7 +13,7 @@ class PredictionServiceTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.service = PredictionService(
-            DATA_PLATFORM_DIR / "Model" / "artifacts" / "logistic_regression_abt.joblib"
+            DATA_PLATFORM_DIR / "Model" / "artifacts" / "logistic_regression_abt.pkl"
         )
         cls.service.load()
         abt = pd.read_csv(

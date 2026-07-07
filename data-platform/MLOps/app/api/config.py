@@ -11,7 +11,7 @@ class Settings:
     model_path: Path = Path(
         os.getenv(
             "MODEL_PATH",
-            str(DATA_PLATFORM_DIR / "Model" / "artifacts" / "logistic_regression_abt.joblib"),
+            str(DATA_PLATFORM_DIR / "Model" / "artifacts" / "logistic_regression_abt.pkl"),
         )
     )
     database_url: str = os.getenv(

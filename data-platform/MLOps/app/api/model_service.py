@@ -1,7 +1,7 @@
+import pickle
 from pathlib import Path
 from typing import Any
 
-import joblib
 import pandas as pd
 
 
@@ -29,7 +29,8 @@ class PredictionService:
         if not self.model_path.is_file():
             raise FileNotFoundError(f"Modelo não encontrado: {self.model_path}")
 
-        artifact = joblib.load(self.model_path)
+        with self.model_path.open("rb") as file:
+            artifact = pickle.load(file)
         missing_keys = self.REQUIRED_ARTIFACT_KEYS.difference(artifact)
         if missing_keys:
             raise ValueError(

@@ -10,7 +10,7 @@
     "positive_class": 1,
     "positive_class_description": "cliente inadimplente",
     "training_dataset": "Dados/abt.csv",
-    "artifact": "Model/artifacts/logistic_regression_abt.joblib"
+    "artifact": "Model/artifacts/logistic_regression_abt.pkl"
   },
   "variables": {
     "identifier": "sk_id_curr",
@@ -83,9 +83,25 @@
     },
     "inference": {
       "decision_threshold": 0.5
+    },
+    "model_comparison": {
+      "models": [
+        "logistic_regression",
+        "decision_tree",
+        "random_forest"
+      ],
+      "eval_metrics": [
+        "roc_auc",
+        "accuracy",
+        "precision"
+      ],
+      "selection_metric": "roc_auc",
+      "output": "Model/artifacts/model_comparison.csv"
     }
   },
   "model_results": {
+    "selected_model": "logistic_regression",
+    "selection_reason": "Maior ROC AUC no conjunto de teste entre os modelos comparados; ROC AUC foi priorizada por ser mais adequada para uma base desbalanceada e para ordenação de risco.",
     "best_parameters": {
       "classifier__C": 0.1,
       "classifier__class_weight": "balanced"
@@ -97,6 +113,29 @@
     "cross_validation_metrics": {
       "roc_auc": 0.7237772549055964,
       "folds": 5
+    },
+    "model_comparison": {
+      "logistic_regression": {
+        "roc_auc": 0.733934242801952,
+        "accuracy": 0.677218997447279,
+        "precision": 0.15451380830819217,
+        "average_precision": 0.21114730172151308,
+        "cv_roc_auc_mean": 0.7237521568087925
+      },
+      "random_forest": {
+        "roc_auc": 0.7229422078216552,
+        "accuracy": 0.682454514413931,
+        "precision": 0.15346181299072092,
+        "average_precision": 0.197682389548681,
+        "cv_roc_auc_mean": 0.714561719034603
+      },
+      "decision_tree": {
+        "roc_auc": 0.6915701519821958,
+        "accuracy": 0.6477082418743801,
+        "precision": 0.13719697627943347,
+        "average_precision": 0.16734413200370102,
+        "cv_roc_auc_mean": 0.6826157802314825
+      }
     }
   }
 }

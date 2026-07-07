@@ -25,7 +25,7 @@ humana.
 6. Pipeline de imputação, padronização, one-hot encoding e regressão logística.
 7. Otimização por `GridSearchCV`, usando ROC AUC e validação cruzada.
 8. Avaliação em teste isolado e análise de interpretabilidade por coeficientes.
-9. Persistência do pré-processamento e do modelo em um único artefato Joblib.
+9. Persistência do pré-processamento e do modelo em um único artefato Pickle.
 
 ## Estrutura exigida pelo item C
 
@@ -93,15 +93,35 @@ Na pasta `data-platform`:
 ```
 
 O script lê `Model/config_model.json` e grava o artefato em
-`Model/artifacts/logistic_regression_abt.joblib`. Para um teste rápido sem
+`Model/artifacts/logistic_regression_abt.pkl`. Para um teste rápido sem
 substituir o modelo oficial:
 
 ```bash
 .venv/bin/python Model/train.py \
   --sample-size 5000 \
   --n-jobs 1 \
-  --output /tmp/logistic_regression_smoke.joblib
+  --output /tmp/logistic_regression_smoke.pkl
 ```
+
+## Comparação de modelos
+
+Para justificar a escolha do algoritmo, execute a comparação entre Regressão
+Logística, Árvore de Decisão e Random Forest usando a mesma ABT, o mesmo split e
+as métricas `roc_auc`, `accuracy` e `precision`:
+
+```bash
+.venv/bin/python Model/compare_models.py
+```
+
+O resultado é salvo em `Model/artifacts/model_comparison.csv`. Para um teste
+rápido:
+
+```bash
+.venv/bin/python Model/compare_models.py --sample-size 5000 --n-jobs 1
+```
+
+Na justificativa técnica, priorize `roc_auc`, pois a base é desbalanceada e o
+objetivo principal é ordenar clientes por risco.
 
 ## Avaliação e interpretabilidade
 

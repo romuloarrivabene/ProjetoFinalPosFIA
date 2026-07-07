@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import pickle
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import joblib
 import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
@@ -160,7 +160,8 @@ def main() -> None:
     artifact = train(config, args.sample_size, args.n_jobs)
     output = args.output or project_path(config["metadata"]["artifact"])
     output.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(artifact, output)
+    with output.open("wb") as file:
+        pickle.dump(artifact, file)
     print(f"Artefato salvo em: {output.resolve()}")
 
 

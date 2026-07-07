@@ -14,7 +14,7 @@ JSON com features ──────────────┘                 
 ```
 
 - `feature_service` consulta as fontes e reproduz as 32 features do cliente;
-- `model_service` carrega o pipeline Joblib e calcula o score;
+- `model_service` carrega o pipeline Pickle e calcula o score;
 - `credit_policy` converte o score em recomendação de negócio;
 - a FastAPI expõe o serviço e o Streamlit consome seus endpoints.
 

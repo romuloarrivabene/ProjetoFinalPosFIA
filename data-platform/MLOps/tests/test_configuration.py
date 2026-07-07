@@ -1,8 +1,7 @@
 import json
+import pickle
 import unittest
 from pathlib import Path
-
-import joblib
 
 
 DATA_PLATFORM_DIR = Path(__file__).resolve().parents[2]
@@ -46,9 +45,10 @@ class ConfigurationTest(unittest.TestCase):
                 encoding="utf-8"
             )
         )
-        artifact = joblib.load(
-            DATA_PLATFORM_DIR / "Model/artifacts/logistic_regression_abt.joblib"
-        )
+        with (
+            DATA_PLATFORM_DIR / "Model/artifacts/logistic_regression_abt.pkl"
+        ).open("rb") as file:
+            artifact = pickle.load(file)
         self.assertEqual(
             config["variables"]["input_features"],
             artifact["input_features"],
