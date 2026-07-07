@@ -12,8 +12,9 @@ APPLICATION_QUERY = text(
     """
     SELECT
         sk_id_curr,
+        ext_source_1,
         ext_source_2,
-        region_rating_client,
+        ext_source_3,
         region_rating_client_w_city,
         days_last_phone_change,
         days_id_publish,
@@ -21,8 +22,8 @@ APPLICATION_QUERY = text(
         reg_city_not_work_city,
         reg_city_not_live_city,
         live_city_not_work_city,
+        flag_own_car,
         own_car_age,
-        def_30_cnt_social_circle,
         def_60_cnt_social_circle,
         amt_req_credit_bureau_year,
         cnt_children,
@@ -30,7 +31,6 @@ APPLICATION_QUERY = text(
         amt_income_total,
         amt_credit,
         amt_annuity,
-        amt_goods_price,
         occupation_type,
         organization_type,
         name_income_type,
@@ -65,7 +65,12 @@ BUREAU_QUERY = text(
         SUM(CASE WHEN TRIM(credit_active) = 'Active' THEN 1 ELSE 0 END)
             AS bureau_active_count,
         SUM(CASE WHEN TRIM(credit_active) = 'Closed' THEN 1 ELSE 0 END)
-            AS bureau_closed_count
+            AS bureau_closed_count,
+        SUM(amt_credit_sum) AS bureau_total_credit,
+        SUM(amt_credit_sum_debt) AS bureau_total_debt,
+        SUM(amt_credit_sum_overdue) AS bureau_total_overdue,
+        SUM(CASE WHEN credit_day_overdue > 0 THEN 1 ELSE 0 END)
+            AS bureau_overdue_count
     FROM bureau
     WHERE sk_id_curr = :customer_id
     """
@@ -97,7 +102,6 @@ ZERO_FILLED_NUMERIC_FEATURES = {
     "reg_city_not_live_city",
     "live_city_not_work_city",
     "own_car_age",
-    "def_30_cnt_social_circle",
     "def_60_cnt_social_circle",
     "amt_req_credit_bureau_year",
     "cnt_children",
@@ -159,7 +163,7 @@ class CustomerFeatureService:
         features = {
             key: self._python_value(value)
             for key, value in application.items()
-            if key not in {"sk_id_curr", "days_birth", "days_employed"}
+            if key not in {"sk_id_curr", "days_birth", "days_employed", "flag_own_car"}
         }
 
         for feature in ZERO_FILLED_NUMERIC_FEATURES:
@@ -168,8 +172,23 @@ class CustomerFeatureService:
 
         if features.get("amt_income_total") == 0:
             features["amt_income_total"] = None
-        if features.get("amt_goods_price") is None:
-            features["amt_goods_price"] = features.get("amt_credit")
+        if features.get("amt_income_total") is None:
+            features["amt_income_total"] = 0.001
+
+        ext_values = [
+            features.get("ext_source_1"),
+            features.get("ext_source_2"),
+            features.get("ext_source_3"),
+        ]
+        ext_values = [value for value in ext_values if value is not None]
+        features["ext_source_mean"] = (
+            sum(ext_values) / len(ext_values) if ext_values else None
+        )
+        if features.get("ext_source_mean") is None:
+            features["ext_source_mean"] = features.get("ext_source_2")
+
+        flag_own_car = self._clean_category(application.get("flag_own_car"), "N")
+        features["has_car"] = int(flag_own_car == "Y")
 
         features["occupation_type"] = self._clean_category(
             features.get("occupation_type"), "Unknown"
@@ -190,10 +209,21 @@ class CustomerFeatureService:
         days_birth = self._python_value(application.get("days_birth"))
         days_employed = self._python_value(application.get("days_employed"))
         features["age"] = abs(days_birth) / 365.25 if days_birth is not None else None
+        features["days_employed_anom"] = int(days_employed == 365243)
         if days_employed == 365243:
             days_employed = 0
         features["years_employed"] = (
             abs(days_employed) / 365.25 if days_employed is not None else 0
+        )
+        features["fe_credit_income_percent"] = (
+            features["amt_credit"] / features["amt_income_total"]
+            if features.get("amt_credit") is not None
+            else None
+        )
+        features["fe_annuity_income_percent"] = (
+            features["amt_annuity"] / features["amt_income_total"]
+            if features.get("amt_annuity") is not None
+            else None
         )
 
         previous_count = int(previous["prev_contract_count"] or 0)
@@ -201,6 +231,7 @@ class CustomerFeatureService:
         features["prev_refused_rate"] = (
             previous_refused / previous_count if previous_count else None
         )
+        features["has_prev_app"] = int(previous_count > 0)
 
         bureau_count = int(bureau["bureau_credit_count"] or 0)
         bureau_active = int(bureau["bureau_active_count"] or 0)
@@ -218,6 +249,17 @@ class CustomerFeatureService:
         features["bureau_closed_rate"] = (
             bureau_closed / bureau_count if bureau_count else None
         )
+        bureau_total_credit = self._python_value(bureau["bureau_total_credit"]) or 0
+        bureau_total_debt = self._python_value(bureau["bureau_total_debt"]) or 0
+        features["bureau_debt_credit_ratio"] = (
+            bureau_total_debt / bureau_total_credit if bureau_total_credit else 0
+        )
+        features["bureau_debt_credit_ratio"] = max(
+            -1,
+            min(1, features["bureau_debt_credit_ratio"]),
+        )
+        features["bureau_overdue_count"] = int(bureau["bureau_overdue_count"] or 0)
+        features["has_bureau"] = int(bureau_count > 0)
 
         return features
 

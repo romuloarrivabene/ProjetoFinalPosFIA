@@ -6,3 +6,6 @@
 /data-platform/DataPipeline/.ipynb_checkpoints/*
 /.internal
 
+# Metadados do macOS
+.DS_Store
+**/.DS_Store

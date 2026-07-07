@@ -123,7 +123,7 @@ with st.sidebar:
 tab_features, tab_customer = st.tabs(("Preencher todos os dados", "Consultar cliente do banco"))
 
 with tab_features:
-    st.write("Preencha as 32 informações esperadas pelo endpoint `POST /predict/features`.")
+    st.write("Preencha as informações esperadas pelo endpoint `POST /predict/features`.")
     with st.form("credit_features_form"):
         features: dict[str, Any] = {}
         for group in GROUPS:

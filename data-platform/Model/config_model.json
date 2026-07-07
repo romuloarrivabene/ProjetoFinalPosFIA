@@ -21,7 +21,9 @@
     ],
     "input_features": [
       "ext_source_2",
-      "region_rating_client",
+      "ext_source_mean",
+      "ext_source_1",
+      "ext_source_3",
       "region_rating_client_w_city",
       "days_last_phone_change",
       "days_id_publish",
@@ -29,8 +31,8 @@
       "reg_city_not_work_city",
       "reg_city_not_live_city",
       "live_city_not_work_city",
+      "has_car",
       "own_car_age",
-      "def_30_cnt_social_circle",
       "def_60_cnt_social_circle",
       "amt_req_credit_bureau_year",
       "cnt_children",
@@ -38,7 +40,6 @@
       "amt_income_total",
       "amt_credit",
       "amt_annuity",
-      "amt_goods_price",
       "occupation_type",
       "organization_type",
       "name_income_type",
@@ -46,12 +47,19 @@
       "code_gender",
       "age",
       "years_employed",
+      "days_employed_anom",
+      "fe_credit_income_percent",
+      "fe_annuity_income_percent",
       "prev_refused_rate",
+      "has_prev_app",
       "bureau_avg_days_credit",
       "bureau_last_days_credit",
       "bureau_active_rate",
       "bureau_active_count",
-      "bureau_closed_rate"
+      "bureau_closed_rate",
+      "bureau_debt_credit_ratio",
+      "bureau_overdue_count",
+      "has_bureau"
     ]
   },
   "parameters": {
@@ -78,8 +86,17 @@
       "scoring": "roc_auc",
       "cv_folds": 5,
       "n_jobs": -1,
-      "classifier__C": [0.01, 0.1, 1.0, 10.0, 100.0],
-      "classifier__class_weight": [null, "balanced"]
+      "classifier__C": [
+        0.01,
+        0.1,
+        1.0,
+        10.0,
+        100.0
+      ],
+      "classifier__class_weight": [
+        null,
+        "balanced"
+      ]
     },
     "inference": {
       "decision_threshold": 0.5
@@ -103,38 +120,38 @@
     "selected_model": "logistic_regression",
     "selection_reason": "Maior ROC AUC no conjunto de teste entre os modelos comparados; ROC AUC foi priorizada por ser mais adequada para uma base desbalanceada e para ordenação de risco.",
     "best_parameters": {
-      "classifier__C": 0.1,
+      "classifier__C": 0.01,
       "classifier__class_weight": "balanced"
     },
     "test_metrics": {
-      "roc_auc": 0.7339467823813353,
-      "average_precision": 0.21107582551930984
+      "roc_auc": 0.7561145464927526,
+      "average_precision": 0.23733691050011677
     },
     "cross_validation_metrics": {
-      "roc_auc": 0.7237772549055964,
+      "roc_auc": 0.7465974756094296,
       "folds": 5
     },
     "model_comparison": {
       "logistic_regression": {
-        "roc_auc": 0.733934242801952,
-        "accuracy": 0.677218997447279,
-        "precision": 0.15451380830819217,
-        "average_precision": 0.21114730172151308,
-        "cv_roc_auc_mean": 0.7237521568087925
+        "roc_auc": 0.7559914448719658,
+        "accuracy": 0.6906492366226038,
+        "precision": 0.1644312920624314,
+        "average_precision": 0.2373923132038484,
+        "cv_roc_auc_mean": 0.7465068569407125
       },
       "random_forest": {
-        "roc_auc": 0.7229422078216552,
-        "accuracy": 0.682454514413931,
-        "precision": 0.15346181299072092,
-        "average_precision": 0.197682389548681,
-        "cv_roc_auc_mean": 0.714561719034603
+        "roc_auc": 0.749491561023382,
+        "accuracy": 0.6962424597174122,
+        "precision": 0.1627243668551758,
+        "average_precision": 0.2261044704155214,
+        "cv_roc_auc_mean": 0.7406506944886921
       },
       "decision_tree": {
-        "roc_auc": 0.6915701519821958,
-        "accuracy": 0.6477082418743801,
-        "precision": 0.13719697627943347,
-        "average_precision": 0.16734413200370102,
-        "cv_roc_auc_mean": 0.6826157802314825
+        "roc_auc": 0.7327468835671911,
+        "accuracy": 0.686291725606881,
+        "precision": 0.155370628697869,
+        "average_precision": 0.2045388641896844,
+        "cv_roc_auc_mean": 0.7231219155722867
       }
     }
   }
