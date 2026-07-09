@@ -5,6 +5,7 @@
 /data-platform/airflow/dags/__pycache__
 /data-platform/DataPipeline/.ipynb_checkpoints/*
 /.internal
+*.pkl
 
 # Metadados do macOS
 .DS_Store

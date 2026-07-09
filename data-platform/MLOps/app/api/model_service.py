@@ -62,6 +62,14 @@ class PredictionService:
 
         # Reindex garante ordem idêntica à do treinamento e ignora campos extras.
         customer = pd.DataFrame([features]).reindex(columns=self.expected_features)
+        categorical_features = self.artifact.get("categorical_features", [])
+        saved_categories = self.artifact.get("categories", {})
+        for column in categorical_features:
+            if column in customer.columns:
+                customer[column] = pd.Categorical(
+                    customer[column],
+                    categories=saved_categories.get(column),
+                )
         risk_score = float(self.artifact["model"].predict_proba(customer)[0, 1])
         predicted_class = int(risk_score >= self.decision_threshold)
         return risk_score, predicted_class
