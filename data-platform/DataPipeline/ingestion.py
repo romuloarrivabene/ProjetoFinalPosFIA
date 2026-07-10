@@ -1,7 +1,7 @@
 import os
 import json
 import pandas as pd
-from utils import get_database_connection, map_pandas_to_postgres_types
+from utils import get_database_connection, map_pandas_to_postgres_types, append_dataframe_to_postgres, log_row_count
 
 def run_csv_ingestion(pasta_origem: str, table_name: str, conn_id: str, config_file: str, chunk_size: int):
     """Executa a ingestão profissional de um único arquivo em chunks controlados,
@@ -51,10 +51,10 @@ def run_csv_ingestion(pasta_origem: str, table_name: str, conn_id: str, config_f
         chunks_iterator = pd.read_csv(caminho_completo, encoding='latin-1', chunksize=chunk_size)
 
     # 4. Gravação de alta performance via COPY EXPERT estruturado por chunks
+    is_first_chunk = True
+
     conn = get_database_connection(conn_id)
     cursor = conn.cursor()
-    
-    is_first_chunk = True
     
     try:
         for num_lote, chunk_df in enumerate(chunks_iterator):
@@ -71,17 +71,9 @@ def run_csv_ingestion(pasta_origem: str, table_name: str, conn_id: str, config_f
                 conn.commit()
                 is_first_chunk = False
             
-            # Despeja o chunk atual de forma ultra rápida usando COPY EXPERT em memória por StringIO
-            import io
-            output = io.StringIO()
-            chunk_df.to_csv(output, sep="\t", header=False, index=False)
-            output.seek(0)
-            
-            cursor.copy_expert(
-                f'COPY "{table_name}" FROM STDIN WITH CSV DELIMITER \'\t\' NULL \'\'', 
-                output
-            )
-            conn.commit()
+            append_dataframe_to_postgres(chunk_df, table_name)
+
+            log_row_count(cursor, table_name, "Saída")
             
     except Exception as e:
         conn.rollback()

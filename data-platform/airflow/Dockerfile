@@ -11,7 +11,3 @@ USER airflow
 
 COPY requirements.txt /requirements.txt
 RUN pip install --no-cache-dir -r /requirements.txt
-
-# O modificador --chown garante que o usuário airflow seja o dono dos arquivos
-RUN mkdir -p /opt/airflow/data/csv 
-# && chown -R airflow:airflow /opt/airflow/data/csv

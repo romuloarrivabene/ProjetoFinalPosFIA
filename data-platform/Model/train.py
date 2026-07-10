@@ -147,6 +147,7 @@ def train(config: dict[str, Any], sample_size: int | None = None) -> dict[str, A
         "model": final_model,
         "decision_threshold": threshold,
         "input_features": list(X.columns),
+        "features": list(X.columns),
         "categorical_features": categoricals,
         "categories": {c: [str(v) for v in X[c].cat.categories] for c in categoricals},
         "metrics": metrics,
@@ -173,6 +174,21 @@ def save_artifact(artifact: dict[str, Any], output: Path) -> None:
     metrics_path.write_text(json.dumps(resumo, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"[artefato] Modelo salvo em: {output}")
     print(f"[artefato] Metricas salvas em: {metrics_path}")
+
+
+def run_training_pipeline(conn_id: str, abt_table: str) -> None:
+    """Ponto de entrada usado pela DAG do Airflow para treinar o modelo.
+
+    O ``conn_id`` e mantido na assinatura porque a DAG nova da main passa esse
+    parametro, mas a conexao efetiva continua sendo resolvida pelo config do
+    modelo, com deteccao automatica de host local vs Docker.
+    """
+    print(f"[airflow] Iniciando treino para a ABT: {abt_table} (conn_id={conn_id})")
+    config = load_config(DEFAULT_CONFIG_PATH)
+    config["metadata"]["abt_table"] = abt_table
+    artifact = train(config)
+    output = project_path(config["metadata"]["artifact"])
+    save_artifact(artifact, output)
 
 
 def parse_args() -> argparse.Namespace:
