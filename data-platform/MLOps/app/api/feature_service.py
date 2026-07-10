@@ -33,11 +33,14 @@ class CustomerFeatureService:
                 f"Cliente {customer_id} não encontrado em application_abt."
             )
 
-        return {
+        features = {
             column: self._python_value(value)
             for column, value in customer.items()
             if column not in {"sk_id_curr", "target"}
         }
+        features.setdefault("inst_late_payment_rate", 0)
+        features.setdefault("has_installments_history", 0)
+        return features
 
     @staticmethod
     def _python_value(value: Any) -> Any:
