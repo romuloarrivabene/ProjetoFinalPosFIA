@@ -32,7 +32,7 @@
       "name_education_type",
       "code_gender"
     ],
-    "features": [
+    "input_features": [
       "ext_source_1", "ext_source_2", "ext_source_3", "ext_source_mean",
       "region_rating_client_w_city", "days_last_phone_change", "days_id_publish",
       "days_registration", "reg_city_not_work_city", "reg_city_not_live_city",

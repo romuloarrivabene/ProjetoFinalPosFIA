@@ -62,7 +62,9 @@ def load_training_data(config: dict[str, Any], conn_id: str = "postgres_data_db"
     print(f"[dados] ABT carregada: {frame.shape[0]:,} linhas x {frame.shape[1]} colunas")
 
     variables = config["variables"]
-    features = variables["input_features"]
+    features = variables.get("input_features") or variables.get("features")
+    if not features:
+        raise ValueError("Configuração inválida: informe variables.input_features ou variables.features.")
     target = variables["target"]
     categoricals = variables["categorical_features"]
 

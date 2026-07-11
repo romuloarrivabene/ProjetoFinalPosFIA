@@ -10,6 +10,7 @@ from .credit_policy import CreditPolicy
 from .feature_service import CustomerFeatureService, CustomerNotFoundError
 from .model_service import ModelInputError, PredictionService
 from .schemas import (
+    CustomerFeaturesResponse,
     FeaturePredictionRequest,
     HealthResponse,
     PredictionResponse,
@@ -65,6 +66,23 @@ def health(request: Request) -> HealthResponse:
 def model_features(request: Request) -> list[str]:
     service: PredictionService = request.app.state.prediction_service
     return service.expected_features
+
+
+@app.get("/customers/{customer_id}/features", response_model=CustomerFeaturesResponse)
+def customer_features(customer_id: int, request: Request) -> CustomerFeaturesResponse:
+    feature_service: CustomerFeatureService = request.app.state.feature_service
+
+    try:
+        features = feature_service.build(customer_id)
+    except CustomerNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except SQLAlchemyError as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Não foi possível consultar as fontes de dados do cliente.",
+        ) from error
+
+    return CustomerFeaturesResponse(customer_id=customer_id, features=features)
 
 
 @app.post("/predict/features", response_model=PredictionResponse)
