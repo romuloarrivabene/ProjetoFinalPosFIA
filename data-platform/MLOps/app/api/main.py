@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from dataclasses import asdict
+import json
 
 from fastapi import FastAPI, HTTPException, Request
 from sqlalchemy import create_engine
@@ -89,6 +90,10 @@ def customer_features(customer_id: int, request: Request) -> CustomerFeaturesRes
 def predict_from_features(
     payload: FeaturePredictionRequest, request: Request
 ) -> PredictionResponse:
+    _log_request_json(
+        "POST /predict/features",
+        {"features": payload.features},
+    )
     return _predict(
         features=payload.features,
         source="provided_features",
@@ -110,11 +115,23 @@ def predict_from_database(customer_id: int, request: Request) -> PredictionRespo
             detail="Não foi possível consultar as fontes de dados do cliente.",
         ) from error
 
+    _log_request_json(
+        f"POST /predict/customer/{customer_id}",
+        {"customer_id": customer_id, "features": features},
+    )
     return _predict(
         features=features,
         source="database",
         customer_id=customer_id,
         request=request,
+    )
+
+
+def _log_request_json(endpoint: str, payload: dict) -> None:
+    print(
+        f"Request JSON {endpoint}: "
+        f"{json.dumps(payload, ensure_ascii=False, default=str)}",
+        flush=True,
     )
 
 
