@@ -20,8 +20,8 @@ def link(source: Path, destination: Path) -> None:
     destination.symlink_to(Path(os.path.relpath(source, destination.parent)))
 
 
-def export_clean_data(destination: Path) -> None:
-    """Exporta application_clean usando o psql do container PostgreSQL."""
+def export_table(table: str, destination: Path) -> None:
+    """Exporta uma tabela do PostgreSQL para CSV usando o container Docker."""
     command = [
         "docker",
         "compose",
@@ -36,8 +36,11 @@ def export_clean_data(destination: Path) -> None:
         "-d",
         "data",
         "--command",
-        "\\copy public.application_clean TO STDOUT WITH (FORMAT CSV, HEADER TRUE)",
+        f"\\copy public.{table} TO STDOUT WITH (FORMAT CSV, HEADER TRUE)",
     ]
+
+    if destination.exists() or destination.is_symlink():
+        destination.unlink()
 
     try:
         with destination.open("wb") as output:
@@ -57,7 +60,7 @@ def export_clean_data(destination: Path) -> None:
         destination.unlink(missing_ok=True)
         detail = error.stderr.decode("utf-8", errors="replace").strip()
         raise RuntimeError(
-            "Não foi possível exportar application_clean. Execute primeiro as DAGs "
+            f"Não foi possível exportar {table}. Execute primeiro as DAGs "
             f"de ingestão e pipeline. Detalhe: {detail}"
         ) from error
 
@@ -67,22 +70,40 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--export-clean",
         action="store_true",
-        help="Exporta application_clean do PostgreSQL para clean_data.csv.",
+        help=(
+            "Exporta application_clean, application_train e application_abt "
+            "do PostgreSQL para clean_data.csv, raw_data.csv e abt.csv."
+        ),
     )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    link(DATA_PLATFORM_DIR / "data/csv/application_train.csv", DADOS_DIR / "raw_data.csv")
     clean_path = DADOS_DIR / "clean_data.csv"
+    raw_path = DADOS_DIR / "raw_data.csv"
+    abt_path = DADOS_DIR / "abt.csv"
+
     if args.export_clean:
-        export_clean_data(clean_path)
-    elif not clean_path.exists():
-        print(
-            "clean_data.csv depende da tabela application_clean; "
-            "use --export-clean após executar o pipeline."
-        )
+        export_table("application_clean", clean_path)
+        export_table("application_train", raw_path)
+        export_table("application_abt", abt_path)
+    else:
+        if not clean_path.exists():
+            print(
+                "clean_data.csv depende da tabela application_clean; "
+                "use --export-clean após executar o pipeline."
+            )
+        if not raw_path.exists():
+            print(
+                "raw_data.csv depende da tabela application_train; "
+                "use --export-clean para gerar."
+            )
+        if not abt_path.exists():
+            print(
+                "abt.csv depende da tabela application_abt; "
+                "use --export-clean para gerar."
+            )
 
     print(f"Dados materializados em: {DADOS_DIR}")
 
