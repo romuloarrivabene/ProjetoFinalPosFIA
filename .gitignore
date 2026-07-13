@@ -1,12 +1,14 @@
-/data-platform/airflow/data
-*.pyc
-*.pyc
-*.pyc
-/data-platform/airflow/dags/__pycache__
-/data-platform/DataPipeline/.ipynb_checkpoints/*
-/.internal
+# Dados e artefatos locais
+/data-platform/**/data/
+/data-platform/DataPipeline/abt.csv
+/data-platform/DataPipeline/exp_analysis.executed.ipynb
+/data-platform/DataPipeline/.ipynb_checkpoints/
 *.pkl
 
-# Metadados do macOS
+# Cache e bytecode do Python
+__pycache__/
+*.py[cod]
+
+# Arquivos internos e metadados do macOS
+/.internal
 .DS_Store
-**/.DS_Store

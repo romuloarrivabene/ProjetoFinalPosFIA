@@ -1,32 +1,31 @@
-# Dados do projeto
+# Dados da entrega
 
-O item C solicita os artefatos `raw_data.csv`, `clean_data.csv` e `abt.csv`.
-Como os arquivos completos têm dezenas ou centenas de megabytes, eles não são
-versionados no Git. Esta pasta preserva a estrutura solicitada e documenta a
-origem de cada artefato.
+Esta pasta representa o local previsto na estrutura de entrega para os artefatos de dados. Os arquivos CSV estão armazenados em [`airflow/data/csv`](../airflow/data/csv/), diretório compartilhado com o processo de ingestão e utilizado para reunir as fontes originais, as bases tratadas e a ABT final.
 
-| Arquivo solicitado | Origem/geração no projeto |
+Essa organização preserva separadamente as quatro fontes do projeto, em vez de condensá-las em um único arquivo, e mantém no mesmo local os dados usados na entrada e os arquivos materializados manualmente para a entrega.
+
+## Arquivos brutos
+
+| Arquivo | Conteúdo |
 |---|---|
-| `raw_data.csv` | `data/csv/application_train.csv`, carregado pela DAG `loadfile_csv_to_postgres` |
-| `clean_data.csv` | tabela PostgreSQL `application_clean`, produzida por `DataPipeline/data_sanitization.py` |
-| `abt.csv` | salvo diretamente nesta pasta por `DataPipeline/exp_analysis.ipynb` |
+| [`application_train.csv`](../airflow/data/csv/application_train.csv) | Cadastro principal e variável-alvo, com uma linha por cliente. |
+| [`previous_application.csv`](../airflow/data/csv/previous_application.csv) | Histórico de propostas de crédito anteriores. |
+| [`bureau.csv`](../airflow/data/csv/bureau.csv) | Histórico de créditos registrados no bureau. |
+| [`installments_payments.csv`](../airflow/data/csv/installments_payments.csv) | Histórico de vencimentos e pagamentos de parcelas. |
 
-## Materialização local
+## Arquivos tratados
 
-Execute, a partir de `data-platform`:
+| Arquivo | Conteúdo |
+|---|---|
+| [`application_clean.csv`](../airflow/data/csv/application_clean.csv) | Cadastro principal após limpeza, padronização e engenharia de atributos cadastrais. |
+| [`previous_application_clean.csv`](../airflow/data/csv/previous_application_clean.csv) | Propostas anteriores após seleção e tratamento dos registros. |
+| [`bureau_clean.csv`](../airflow/data/csv/bureau_clean.csv) | Histórico de bureau após seleção e tratamento dos registros. |
+| [`installments_clean.csv`](../airflow/data/csv/installments_clean.csv) | Parcelas após seleção e tratamento dos registros. |
 
-```bash
-python3 Dados/materialize.py
-```
+## Base analítica
 
-O comando cria a referência local `Dados/raw_data.csv`. Para exportar
-`clean_data.csv` do PostgreSQL, informe `--export-clean`. Essa exportação usa o
-`psql` do próprio container e não exige `pandas` no Python local. A `abt.csv` não
-depende deste utilitário: ela é gravada diretamente pelo notebook de análise.
+| Arquivo | Conteúdo |
+|---|---|
+| [`application_abt.csv`](../airflow/data/csv/application_abt.csv) | Analytical Base Table final, com uma linha por cliente e as features utilizadas na modelagem. |
 
-```bash
-python3 Dados/materialize.py --export-clean
-```
-
-Os CSVs são ignorados pelo Git intencionalmente. O código, as configurações e
-as instruções necessárias para reproduzi-los permanecem versionados.
+Os arquivos tratados e a ABT são exportados manualmente do PostgreSQL pelo script [`export_data.py`](../DataPipeline/export_data.py). O procedimento de geração está descrito no [README do DataPipeline](../DataPipeline/README.md#exportação-de-tabelas-para-csv).

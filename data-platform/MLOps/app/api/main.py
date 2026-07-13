@@ -23,8 +23,6 @@ async def lifespan(app: FastAPI):
     settings.validate()
 
     prediction_service = PredictionService(settings.model_path)
-    prediction_service.load()
-
     database_engine = create_engine(settings.database_url, pool_pre_ping=True)
     feature_service = CustomerFeatureService(database_engine)
     credit_policy = CreditPolicy(
@@ -66,6 +64,7 @@ def health(request: Request) -> HealthResponse:
 @app.get("/model/features", response_model=list[str])
 def model_features(request: Request) -> list[str]:
     service: PredictionService = request.app.state.prediction_service
+    _ensure_model_loaded(service)
     return service.expected_features
 
 
@@ -126,6 +125,17 @@ def predict_from_database(customer_id: int, request: Request) -> PredictionRespo
         request=request,
     )
 
+def _ensure_model_loaded(service: PredictionService) -> None:
+    if service.is_loaded:
+        return
+
+    try:
+        service.load()
+    except FileNotFoundError as error:
+        raise HTTPException(
+            status_code=503,
+            detail="O modelo ainda não está disponível.",
+        ) from error
 
 def _log_request_json(endpoint: str, payload: dict) -> None:
     print(
@@ -144,6 +154,8 @@ def _predict(
     prediction_service: PredictionService = request.app.state.prediction_service
     credit_policy: CreditPolicy = request.app.state.credit_policy
 
+    _ensure_model_loaded(prediction_service)
+        
     try:
         risk_score, predicted_class = prediction_service.predict(features)
     except ModelInputError as error:

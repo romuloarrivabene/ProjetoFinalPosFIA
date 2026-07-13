@@ -125,6 +125,8 @@ services:
       dockerfile: MLOps/Dockerfile.api
     ports:
       - "8000:8000"
+    volumes:
+      - ./Model/artifacts:/app/Model/artifacts:ro
     environment:
       DATABASE_URL: postgresql+psycopg2://airflow:airflow@postgres:5432/data
       MODEL_PATH: /app/Model/artifacts/lightgbm_abt.pkl
