@@ -16,12 +16,21 @@ class CreditPolicyTest(unittest.TestCase):
             "manual_review",
         )
 
+    def test_threshold_boundaries(self) -> None:
+        self.assertEqual(self.policy.evaluate(0.35).recommendation, "manual_review")
+        self.assertEqual(self.policy.evaluate(0.65).recommendation, "reject")
+
     def test_reject(self) -> None:
         self.assertEqual(self.policy.evaluate(0.80).recommendation, "reject")
 
     def test_invalid_thresholds(self) -> None:
         with self.assertRaises(ValueError):
             CreditPolicy(0.70, 0.60, "invalid")
+
+    def test_score_outside_valid_range(self) -> None:
+        for score in (-0.01, 1.01):
+            with self.subTest(score=score), self.assertRaises(ValueError):
+                self.policy.evaluate(score)
 
 
 if __name__ == "__main__":

@@ -54,9 +54,16 @@ app = FastAPI(
 @app.get("/health", response_model=HealthResponse)
 def health(request: Request) -> HealthResponse:
     service: PredictionService = request.app.state.prediction_service
+    try:
+        _load_model_if_available(service)
+    except FileNotFoundError:
+        # A API pode subir antes de a DAG gerar o artefato. Nesse estado o
+        # endpoint continua sendo um liveness check e informa model_loaded=false.
+        pass
+
     return HealthResponse(
         status="ok",
-        model_loaded=service.is_loaded,
+        model_loaded=service.is_current,
         model_path=str(service.model_path),
     )
 
@@ -125,12 +132,13 @@ def predict_from_database(customer_id: int, request: Request) -> PredictionRespo
         request=request,
     )
 
-def _ensure_model_loaded(service: PredictionService) -> None:
-    if service.is_loaded:
-        return
+def _load_model_if_available(service: PredictionService) -> None:
+    service.load_if_needed()
 
+
+def _ensure_model_loaded(service: PredictionService) -> None:
     try:
-        service.load()
+        _load_model_if_available(service)
     except FileNotFoundError as error:
         raise HTTPException(
             status_code=503,

@@ -23,6 +23,7 @@ class PredictionService:
     def __init__(self, model_path: Path) -> None:
         self.model_path = model_path
         self.artifact: dict[str, Any] | None = None
+        self._loaded_artifact_signature: tuple[int, int] | None = None
 
     def load(self) -> None:
         if not self.model_path.is_file():
@@ -42,10 +43,27 @@ class PredictionService:
             artifact["input_features"] = artifact["features"]
 
         self.artifact = artifact
+        self._loaded_artifact_signature = self._artifact_signature()
+
+    def load_if_needed(self) -> None:
+        """Carrega o artefato ausente ou recarrega quando o arquivo muda."""
+        if not self.is_current:
+            self.load()
 
     @property
     def is_loaded(self) -> bool:
         return self.artifact is not None
+
+    @property
+    def artifact_available(self) -> bool:
+        return self.model_path.is_file()
+
+    @property
+    def is_current(self) -> bool:
+        """Indica que o modelo em memória corresponde ao arquivo atual."""
+        if not self.is_loaded or not self.artifact_available:
+            return False
+        return self._loaded_artifact_signature == self._artifact_signature()
 
     @property
     def expected_features(self) -> list[str]:
@@ -84,3 +102,7 @@ class PredictionService:
     def _ensure_loaded(self) -> None:
         if self.artifact is None:
             raise RuntimeError("O modelo ainda não foi carregado.")
+
+    def _artifact_signature(self) -> tuple[int, int]:
+        stat = self.model_path.stat()
+        return stat.st_mtime_ns, stat.st_size

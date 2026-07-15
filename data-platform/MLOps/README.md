@@ -15,7 +15,46 @@ O desenho resolve quatro preocupações:
 
 A implementação é deliberadamente acadêmica: demonstra o serving do modelo e a integração entre componentes. Autenticação, registry, persistência estruturada de auditoria e monitoramento produtivo permanecem evoluções futuras.
 
-## Arquitetura do serviço
+## Arquitetura funcional completa
+
+```text
+Home Credit CSVs
+  application_train | previous_application | bureau | installments_payments
+                                      │
+                                      ▼
+                         Airflow / pipeline_orchestration
+              ingestão → índices → limpeza → agregações → ABT → treino
+                                      │
+                 ┌──────────────────┴─────────────────┐
+                 ▼                                   ▼
+       PostgreSQL / banco data                 Model/artifacts
+    raw → clean → application_abt        lightgbm_abt.pkl + metrics.json
+                 │                                   │
+                 └──────────────────┬─────────────────┘
+                                    ▼
+                            FastAPI / serving
+                 FeatureService + PredictionService + CreditPolicy
+                         │                         │
+             Swagger / consumidores HTTP             └→ Streamlit
+                         │                              │
+                         └────── score + classe + política ─────┘
+```
+
+| Camada | Componente | Responsabilidade | Saída ou contrato |
+|---|---|---|---|
+| Origem | CSVs Home Credit | Fornecer cadastro, propostas, bureau e parcelas. | Quatro arquivos de entrada. |
+| Orquestração | Airflow | Ordenar ingestão, tratamento, ABT e treinamento. | DAG `pipeline_orchestration`. |
+| Persistência | PostgreSQL | Manter dados raw, clean e a visão por cliente. | `application_abt`. |
+| Modelagem | LightGBM / `train.py` | Treinar, avaliar e empacotar o contrato de inferência. | `lightgbm_abt.pkl` e `metrics.json`. |
+| Acesso a dados | `FeatureService` | Recuperar da ABT as mesmas features usadas no treino. | Dicionário de features por cliente. |
+| Inferência | `PredictionService` | Validar o artefato, alinhar tipos e calcular o score. | `risk_score` e `predicted_class`. |
+| Decisão | `CreditPolicy` | Traduzir o score em aprovação, revisão ou rejeição. | Recomendação e versão da política. |
+| Exposição | FastAPI | Publicar contratos, saúde, features e predições. | HTTP/JSON e Swagger. |
+| Experiência | Streamlit | Demonstrar consulta, edição e análise de clientes. | Interface para o analista. |
+
+O fluxo contém dois ciclos. No ciclo **offline**, a DAG reconstrói os dados, materializa a ABT e gera o artefato. No ciclo **online**, a API combina as features da ABT ou do formulário com o artefato já treinado e aplica a política sem reexecutar o pipeline.
+
+### Arquitetura do serviço de predição
 
 ```text
 Formulário de features ───────────────┐
@@ -56,7 +95,7 @@ FastAPI    (contrato / transporte)
 - **Consistência treino ↔ inferência pela ABT.** O `feature_service` lê a **mesma** `application_abt` usada no treinamento; as features online são idênticas às offline **por construção**. A API **não re-implementa** a engenharia de atributos do pipeline, eliminando *training/serving skew*. Custo consciente: a predição por cliente depende de a ABT estar atualizada.
 - **Modelo e política desacoplados.** O modelo entrega um **score de ordenação** (estável, versionado no artefato); a **política de crédito** o traduz em recomendação por **limiares configuráveis**, que mudam sem re-treinar. Por isso `predicted_class` (limiar do modelo) e `recommendation` (política) são conceitos distintos e podem divergir.
 - **Contrato dirigido pelo artefato.** A lista de features, as categorias e o threshold viajam dentro do próprio artefato; a API valida e alinha a entrada contra esse contrato antes de pontuar. `schemas.py` formaliza o contrato HTTP e o frontend o consome — uma **fonte de verdade única** que flui de **treino → artefato → API → UI**.
-- **Dependências carregadas no startup.** Modelo e engine de banco são criados **uma vez** no `lifespan` e guardados em `app.state`; as requisições os reutilizam, sem recarregar o modelo por chamada. O pool usa `pool_pre_ping` para resiliência a conexões ociosas.
+- **Dependências inicializadas no startup e modelo sob demanda.** O serviço de modelo e a engine de banco são criados **uma vez** no `lifespan` e guardados em `app.state`. O artefato é carregado na primeira verificação de saúde ou predição depois de ser gerado pela DAG, e então reutilizado sem recarga por chamada. O pool usa `pool_pre_ping` para resiliência a conexões ociosas.
 - **Três modos de consumo sobre o mesmo núcleo.** O caminho de predição (`_predict`) é único; muda apenas a **origem das features** — fornecidas pelo consumidor, recuperadas da ABT por `sk_id_curr`, ou recuperadas e **editadas** antes de reavaliar.
 
 ### Fluxo do contrato
@@ -76,10 +115,10 @@ train.py  ──→  artefato .pkl  ──→  PredictionService  ──→  /mo
 
 Serviço de scoring que expõe o modelo como serviço de predição:
 
-- **carga no startup** — modelo e conexão de banco são inicializados uma vez (`lifespan`) e reutilizados por todas as requisições;
+- **carga segura sob demanda** — serviço e conexão de banco são inicializados uma vez (`lifespan`); o artefato é carregado pelo `/health` ou pela primeira operação que precisa do modelo, e sua assinatura de arquivo permite detectar remoção ou uma nova versão gerada pela DAG;
 - **documentação viva** — OpenAPI/Swagger em `/docs`, gerada a partir dos contratos de `schemas.py`;
 - **capacidades** — *liveness* (`/health`), metadados de features (`/model/features`), recuperação das features de um cliente (`/customers/{id}/features`) e **dois modos de predição** (por features fornecidas e por cliente armazenado na ABT);
-- **validação e erros tipados** — features obrigatórias ausentes → `422` com a lista; cliente inexistente → `404`; falha de banco → `503`; artefato inválido **impede a subida** do serviço;
+- **validação e erros tipados** — features obrigatórias ausentes → `422` com a lista; cliente inexistente → `404`; falha de banco → `503`; sem artefato, o `/health` informa `model_loaded=false` e a predição retorna `503`;
 - **rastreabilidade** — cada predição é registrada em **JSON no stdout** do container (apoio a demonstração e diagnóstico; não substitui auditoria persistente);
 - **separação de decisão** — a resposta traz, junto ao score, a recomendação da política e os limiares que a produziram.
 
@@ -135,8 +174,8 @@ MLOps/
 |---|---|---|
 | `MODEL_PATH` | Caminho do artefato LightGBM | `/app/Model/artifacts/lightgbm_abt.pkl` |
 | `DATABASE_URL` | Conexão com o banco `data` | PostgreSQL do Compose |
-| `CREDIT_APPROVE_MAX_SCORE` | Limite superior para aprovação | `0.35` |
-| `CREDIT_MANUAL_REVIEW_MAX_SCORE` | Limite superior para revisão manual | `0.65` |
+| `CREDIT_APPROVE_MAX_SCORE` | Limite superior para aprovação | `0.50` |
+| `CREDIT_MANUAL_REVIEW_MAX_SCORE` | Limite superior para revisão manual | `0.60` |
 | `CREDIT_POLICY_VERSION` | Identificador da política | `demo-v1` |
 | `CREDIT_API_URL` | URL consumida pelo frontend | `http://credit-api:8000` |
 
@@ -149,12 +188,13 @@ Os limites são demonstrativos e devem ser validados com custos e regras reais d
 No startup da FastAPI, o `lifespan`:
 
 1. valida os limites da política;
-2. cria o `PredictionService` com `MODEL_PATH`;
-3. carrega e valida o dicionário Pickle;
-4. cria o engine SQLAlchemy com `pool_pre_ping=True`;
-5. instancia serviço de features e política;
-6. registra os serviços em `app.state` para reuso pelas requisições;
-7. libera o pool de conexões no shutdown.
+2. cria o `PredictionService` com `MODEL_PATH`, sem exigir que o artefato já exista;
+3. cria o engine SQLAlchemy com `pool_pre_ping=True`;
+4. instancia serviço de features e política;
+5. registra os serviços em `app.state` para reuso pelas requisições;
+6. libera o pool de conexões no shutdown.
+
+O `/health` tenta carregar e validar o Pickle quando ele está disponível. Isso permite iniciar a plataforma antes do treinamento e faz com que o botão **Verificar conexão** do Streamlit reconheça o modelo sem exigir uma predição anterior. Se o arquivo ainda não foi gerado ou foi removido, a API permanece ativa com `model_loaded=false`; endpoints de predição retornam `503`. Quando a DAG cria ou substitui o arquivo, a API compara tamanho e data de modificação e carrega a versão atual antes de responder.
 
 O artefato precisa conter modelo, threshold, métricas e uma lista de features. Para compatibilidade, o serviço aceita a chave atual `features` ou a chave histórica `input_features`.
 
@@ -263,15 +303,15 @@ O exemplo é abreviado para leitura; uma chamada válida deve incluir todas as f
 {
   "source": "provided_features",
   "customer_id": null,
-  "risk_score": 0.42,
-  "predicted_class": 0,
+  "risk_score": 0.55,
+  "predicted_class": 1,
   "model_decision_threshold": 0.5,
   "policy": {
     "recommendation": "manual_review",
     "reason": "Score na faixa intermediária; requer análise humana.",
     "policy_version": "demo-v1",
-    "approve_max_score": 0.35,
-    "manual_review_max_score": 0.65
+    "approve_max_score": 0.50,
+    "manual_review_max_score": 0.60
   }
 }
 ```
@@ -344,6 +384,7 @@ MLOps/.venv/bin/python -m unittest discover -s MLOps/tests -v
 | `test_credit_policy.py` | Faixas de aprovação, revisão, rejeição e limites inválidos. |
 | `test_model_service.py` | Score válido e rejeição de features ausentes. |
 | `test_predict.py` | Inferência pelo script local e contrato do resultado. |
+| `test_health.py` | Carga do artefato pelo health check e estado anterior ao treinamento. |
 | `test_frontend.py` | Inicialização da aplicação Streamlit. |
 | `test_configuration.py` | Estrutura esperada e coerência entre configuração e artefato. |
 
@@ -363,24 +404,169 @@ Além de calibração do score, autenticação e adoção de um *model registry*
 
 ### iii. Monitoramento em produção
 
-O objetivo é detectar **falhas, perda de performance e mudança de comportamento dos dados** antes que afetem a decisão de crédito. Como a base é **transversal (sem datas absolutas de originação)**, o monitoramento é definido por **lote de novas aplicações comparado ao baseline de treino** — e não por safra temporal, que exigiria coortes datadas inexistentes neste conjunto. Cada dimensão tem um **alerta** que aciona reavaliação ou re-treino:
+O objetivo é detectar **falhas, perda de performance e mudança de comportamento dos dados** antes que afetem a decisão de crédito. Como a base é **transversal (sem datas absolutas de originação)**, o desenho usa **lotes de novas aplicações comparados ao baseline versionado de treino**. Monitoramento por safra passa a ser adotado quando a produção registrar datas de originação e maturidade do contrato.
 
-- **estabilidade dos dados** — PSI do score e das principais features de cada novo lote contra a população de treino (não depende de rótulos nem de datas);
-- **desempenho** — AUC/KS recalculados à medida que os desfechos (inadimplência) dos aprovados amadurecem, contra o baseline do teste;
-- **decisão** — taxa de aprovação e inadimplência observada dos aprovados por lote;
-- **calibração** — Brier / curva de calibração conforme os desfechos são observados;
-- **fairness** — desempenho e taxa de negados por subgrupo.
+#### Dados necessários
+
+Cada inferência deve persistir, com acesso controlado: `prediction_id`, cliente anonimizado, timestamp, versão do modelo, versão da política, features ou estatísticas permitidas, score, recomendação, latência e código HTTP. Quando o resultado real amadurecer, a inadimplência observada deve ser associada ao `prediction_id`. O baseline de treino deve armazenar distribuições, schema e as métricas oficiais do modelo.
+
+As métricas calculadas por lote seriam gravadas em uma tabela `model_monitoring_metrics`, permitindo dashboard no Metabase, histórico de alertas e auditoria. Métricas de infraestrutura poderiam ser coletadas por Prometheus/Grafana em uma evolução produtiva.
+
+#### Plano operacional proposto
+
+| Dimensão | Indicador e fonte | Frequência | Alerta inicial proposto | Ação | Responsável |
+|---|---|---|---|---|---|
+| Disponibilidade | `/health`, estado dos containers e disponibilidade do PostgreSQL | Contínua, a cada 1 min | Duas falhas consecutivas ou modelo indisponível após o treino | Reiniciar serviço; verificar volume, artefato e banco; escalar incidente | MLOps |
+| Erros da API | Percentual de respostas `5xx` nos logs | Janela de 5 min | `5xx > 2%` | Bloquear automações, preservar revisão humana e investigar dependências | MLOps |
+| Latência | p95 de `/predict/*` | Janela de 15 min | `p95 > 1 s` | Verificar banco, pool e recursos; aplicar degradação segura | MLOps |
+| Pipeline | Estado e duração das tasks no Airflow | Por execução | Qualquer task falha ou duração `> 150%` da mediana histórica | Não publicar novo artefato; repetir etapa idempotente e abrir incidente | Engenharia de Dados |
+| Contrato dos dados | Colunas, tipos, nulos, categorias desconhecidas e volume | Em cada lote, antes do scoring | Coluna obrigatória ausente; tipo incompatível; nulos `> 5 p.p.` do baseline; volume fora de `±30%` | Rejeitar ou colocar o lote em quarentena e acionar Engenharia de Dados | Engenharia de Dados |
+| Drift de dados | PSI das principais features contra o treino | Em cada lote | `0,10 ≤ PSI < 0,25`: atenção; `PSI ≥ 0,25`: crítico | Investigar origem; revisar regras; iniciar avaliação de retreino | Dados + Risco |
+| Drift do score | PSI da distribuição de `risk_score` | Diário ou por lote | Mesmas faixas de PSI | Revisar mix de clientes, qualidade das features e política | MLOps + Risco |
+| Desempenho | AUC e KS com rótulos maduros; baseline atual AUC `0,7593` e KS `0,3980` | Mensal, após maturidade mínima | Queda absoluta `> 0,05` em AUC ou KS | Suspender decisão automática, analisar segmentos e avaliar challenger ou retreino | Ciência de Dados + Risco |
+| Calibração | Brier e curva de calibração; baseline Brier `0,1908` | Mensal, com rótulos maduros | Brier piora `> 10%` relativo ou desvio sistemático da curva | Recalibrar score; não o comunicar como probabilidade até validação | Ciência de Dados |
+| Decisão e negócio | Aprovação, revisão, rejeição e inadimplência dos aprovados | Diária; inadimplência mensal | Variação relativa `> 20%` contra baseline ou política | Validar mudança populacional e revisar limites com o negócio | Risco/Crédito |
+| Fairness | AUC, TPR/FPR e taxa de decisão por subgrupo permitido | Mensal | Diferença entre grupos `> 10 p.p.` ou degradação persistente | Revisão de governança, análise de causa e supervisão humana reforçada | Risco + Governança |
+
+Os limites acima são **hipóteses operacionais iniciais**, não regras regulatórias nem valores definitivamente aprovados. Eles devem ser ajustados com testes de carga, apetite de risco, custos reais, volume produtivo e validação das áreas de Crédito e Governança.
+
+#### Fluxo de alerta e resposta
+
+```text
+Predições + logs da API + Airflow + desfechos reais
+                         │
+                         ▼
+           jobs de qualidade e monitoramento por lote
+                         │
+                         ▼
+       model_monitoring_metrics → dashboard Metabase
+                         │
+               normal / atenção / crítico
+                         │
+                         ▼
+       alerta + ticket + responsável + evidências
+                         │
+       corrigir dados / ajustar serviço / avaliar retreino
+```
+
+Um alerta pode abrir automaticamente uma execução de avaliação ou treinar um modelo *challenger*, mas **não deve promover sozinho um novo modelo**. A publicação exige comparação com o modelo vigente, testes de contrato, desempenho e fairness, registro da versão e aprovação humana de Risco.
 
 ### iv. Ações automatizadas a partir das previsões
 
-As predições podem **acionar ações** de negócio, conectando ML, automação e agentes de IA:
+O componente `CreditPolicy` já implementa o primeiro mecanismo: transforma o score nas faixas `approve`, `manual_review` e `reject`, mantendo a regra de negócio fora do modelo. Em uma evolução produtiva, cada resposta da API produziria um evento durável para acionar o restante da jornada sem aumentar a latência da predição.
 
-- **roteamento automático** do pedido conforme a faixa da política (aprovação direta, fila de revisão humana, recusa justificada);
-- **priorização da fila** de análise pelos casos de maior risco/valor;
-- **agente de IA** que compõe um resumo explicável da decisão (drivers SHAP + política aplicada) para o analista;
-- **gatilho de re-treino** aberto automaticamente quando um alerta de drift ou queda de performance dispara.
+#### Fluxo proposto
 
-Essas ações permanecem **sob supervisão humana**: o modelo ordena risco e recomenda; a concessão final segue a política e a análise do analista.
+```text
+FastAPI calcula score + CreditPolicy define recomendação
+                         │
+                         ▼
+         PredictionEvent persistido em outbox transacional
+                         │
+                         ▼
+              worker/orquestrador de decisões
+        ┌───────────────────┼───────────────────┐
+        ▼                   ▼                   ▼
+     approve            manual_review            reject
+   esteira rápida       fila priorizada       revisão/justificativa
+        │                   │                   │
+        └───────────────────┼───────────────────┘
+                            ▼
+          agente gera resumo explicável para o analista
+                            │
+                            ▼
+              decisão humana + trilha de auditoria
+```
+
+Para a demonstração acadêmica, a resposta HTTP e o log JSON representam esse evento. A primeira implementação produtiva pode usar uma tabela de *outbox* no PostgreSQL e um worker idempotente. Em maior escala, a outbox pode publicar em Kafka ou RabbitMQ sem alterar o contrato do modelo.
+
+#### Ações por faixa da política
+
+| Recomendação | Ação automatizada | Verificação obrigatória | Resultado |
+|---|---|---|---|
+| `approve` | Encaminhar para esteira rápida e solicitar validações cadastrais, antifraude e capacidade de pagamento. | Todas as regras mandatórias e a alçada de crédito precisam ser satisfeitas. | Proposta pronta para confirmação ou exceção enviada ao analista. |
+| `manual_review` | Criar caso na fila humana, priorizado por risco, valor e tempo de espera. | Analista revisa documentos, drivers e regras não representadas pelo modelo. | Decisão humana registrada com justificativa. |
+| `reject` | Criar caso com os fatores de risco permitidos e minuta de justificativa. | Revisão de regras, conformidade e possibilidade de contestação; o agente não comunica nem efetiva sozinho. | Confirmação humana ou devolução para nova análise. |
+| Alerta crítico de monitoramento | Desabilitar ações automáticas e direcionar todas as propostas à revisão. | MLOps e Risco investigam o alerta. | Operação em modo seguro até liberação formal. |
+
+#### Contrato do evento
+
+O evento deve carregar somente o necessário para executar e auditar a automação:
+
+```json
+{
+  "event_id": "uuid",
+  "event_type": "credit_prediction_completed",
+  "occurred_at": "2026-07-15T18:00:00Z",
+  "prediction_id": "uuid",
+  "customer_ref": "identificador_anonimizado",
+  "model_version": "1.0.0",
+  "policy_version": "demo-v1",
+  "risk_score": 0.55,
+  "recommendation": "manual_review",
+  "top_drivers": [],
+  "requested_action": "create_review_case"
+}
+```
+
+`event_id` é a chave de idempotência: reprocessar o mesmo evento não pode duplicar casos, mensagens ou decisões. `top_drivers` somente é preenchido por um serviço de explicabilidade aprovado; o agente não pode inventar causas a partir do score.
+
+#### Agente de apoio ao analista
+
+O agente de IA tem função **redacional e assistiva**, sem autoridade para aprovar, rejeitar, alterar score ou mudar limites. Ele recebe:
+
+- score e faixa da política;
+- versões do modelo e da política;
+- principais drivers calculados por SHAP ou outro explicador validado;
+- regras aplicadas, documentos disponíveis e dados cadastrais estritamente necessários;
+- base de conhecimento versionada com políticas e textos autorizados.
+
+A resposta deve obedecer a um schema estruturado:
+
+```json
+{
+  "summary": "Resumo objetivo para o analista.",
+  "risk_drivers": ["driver calculado e sua direção"],
+  "applied_rules": ["regra e versão"],
+  "missing_information": ["documento ou verificação pendente"],
+  "suggested_next_action": "review_documents",
+  "requires_human_review": true
+}
+```
+
+O resumo explica evidências já calculadas; ele não deve afirmar causalidade, criar motivos de recusa nem apresentar o score como probabilidade calibrada.
+
+#### Guardrails e auditoria
+
+- **decisão humana preservada:** `requires_human_review` não pode ser removido pelo agente;
+- **minimização de dados:** mascarar identificadores e não enviar atributos sensíveis sem base e finalidade aprovadas;
+- **saída validada:** rejeitar respostas fora do schema, com drivers inexistentes ou regras sem versão;
+- **ferramentas permitidas:** o agente consulta apenas fontes internas autorizadas e não executa pagamentos, contratos ou alterações cadastrais;
+- **rastreabilidade:** registrar prompt versionado, contexto permitido, resposta, modelo de IA utilizado, timestamps e decisão posterior do analista;
+- **segregação:** mudanças no modelo de risco, na política e no prompt seguem aprovações independentes;
+- **modo seguro:** indisponibilidade do agente, baixa qualidade ou alerta crítico gera resumo determinístico e encaminhamento humano, nunca aprovação automática.
+
+#### Falhas e recuperação
+
+| Falha | Tratamento automático | Fallback seguro |
+|---|---|---|
+| Evento não publicado | Outbox repete com *backoff* e limite de tentativas. | Caso permanece pendente e alerta MLOps. |
+| Evento duplicado | Worker verifica `event_id`. | Retorna o resultado anterior sem repetir ações. |
+| Agente indisponível | Repetição limitada e circuit breaker. | Template determinístico com score, política e encaminhamento humano. |
+| Resposta inválida do agente | Validação de schema e drivers contra a fonte. | Descartar texto e criar revisão sem resumo gerativo. |
+| Política ou modelo sem versão | Bloquear processamento. | Revisão humana e incidente de configuração. |
+| Drift ou queda de desempenho crítica | Abrir avaliação e treinar challenger. | Manter modelo vigente ou modo manual; nunca promover automaticamente. |
+
+#### Sequência de evolução
+
+1. Persistir predições e versões em trilha de auditoria.
+2. Implementar outbox e worker idempotente para criar a fila de revisão.
+3. Adicionar explicações locais validadas e versionadas.
+4. Integrar o agente em modo sombra, comparando seus resumos com os dos analistas.
+5. Liberar uso assistivo após testes de qualidade, segurança, viés e aprovação de Governança.
+6. Conectar alertas ao treinamento de challenger, mantendo a promoção sob aprovação humana.
+
+Essa proposta conecta ML, automação e agente de IA sem transferir a decisão de crédito para o modelo generativo.
 
 ## Componentes relacionados
 

@@ -6,6 +6,8 @@ Lê o artefato `.pkl` gerado na pipeline, recebe os dados de um cliente
 """
 import argparse
 import pickle
+from typing import Any
+
 import pandas as pd
 from pathlib import Path
 
@@ -32,13 +34,17 @@ def get_database_connection(conn_id: str = "postgres_data_db", silent: bool = Fa
     engine = create_engine(conn_str)
     return engine.raw_connection()
 
-def load_artifact(artifact_path: Path):
+def load_artifact(artifact_path: Path) -> dict[str, Any]:
     if not artifact_path.exists():
         raise FileNotFoundError(f"Artefato não encontrado: {artifact_path}. Execute o train.py antes.")
     with open(artifact_path, "rb") as f:
         return pickle.load(f)
 
-def load_features_from_abt(sk_id: int, conn_id: str, features_esperadas: list) -> pd.DataFrame:
+def load_features_from_abt(
+    sk_id: int,
+    conn_id: str,
+    features_esperadas: list[str],
+) -> pd.DataFrame:
     """Busca os dados fresquinhos do cliente direto na ABT usando o utils."""
     conn = get_database_connection(conn_id, silent=True)
     
@@ -52,21 +58,36 @@ def load_features_from_abt(sk_id: int, conn_id: str, features_esperadas: list) -
         
     return df
 
-def predict_score(df_features: pd.DataFrame, artifact: dict) -> dict:
+def predict_score(
+    df_features: pd.DataFrame,
+    artifact: dict[str, Any],
+) -> dict[str, Any]:
     """Executa a inferência e retorna a decisão de negócio."""
     model = artifact["model"]
-    features_esperadas = artifact["features"]
-    threshold = artifact["decision_threshold"]
-    
-    # Filtra e alinha colunas
-    df_inf = df_features[[c for c in features_esperadas if c in df_features.columns]].copy()
-    
-    # Garante tipagem categórica
-    for col in df_inf.select_dtypes(include=['object', 'string']).columns:
-        df_inf[col] = df_inf[col].astype('category')
-        
-    proba = model.predict_proba(df_inf)[0, 1]
-    
+    features_esperadas = artifact.get("input_features", artifact.get("features"))
+    if not features_esperadas:
+        raise ValueError("Artefato inválido: lista de features ausente.")
+
+    missing_features = sorted(set(features_esperadas).difference(df_features.columns))
+    if missing_features:
+        raise ValueError(f"Features obrigatórias ausentes: {', '.join(missing_features)}")
+
+    threshold = float(artifact["decision_threshold"])
+    df_inf = df_features.reindex(columns=features_esperadas).copy()
+
+    categorical_features = set(artifact.get("categorical_features", []))
+    saved_categories = artifact.get("categories", {})
+    for column in df_inf.columns:
+        if column in categorical_features:
+            df_inf[column] = pd.Categorical(
+                df_inf[column],
+                categories=saved_categories.get(column),
+            )
+        else:
+            df_inf[column] = pd.to_numeric(df_inf[column], errors="coerce")
+
+    proba = float(model.predict_proba(df_inf)[0, 1])
+
     return {
         "risk_score": round(proba, 4),
         "decision_threshold": threshold,
@@ -82,9 +103,16 @@ if __name__ == "__main__":
     print(f"[PREDICT] Carregando artefato...")
     print(ARTIFACT_PATH)
     artifact = load_artifact(ARTIFACT_PATH)
+    artifact_features = artifact.get("input_features", artifact.get("features"))
+    if not artifact_features:
+        raise ValueError("Artefato inválido: lista de features ausente.")
     
     print(f"[PREDICT] Buscando features para sk_id_curr = {args.sk_id}...")
-    df_client = load_features_from_abt(args.sk_id, "postgres_data_db", artifact["features"])
+    df_client = load_features_from_abt(
+        args.sk_id,
+        "postgres_data_db",
+        artifact_features,
+    )
     
     print("[PREDICT] Rodando modelo...")
     resultado = predict_score(df_client, artifact)

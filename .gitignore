@@ -3,6 +3,7 @@
 /data-platform/DataPipeline/abt.csv
 /data-platform/DataPipeline/exp_analysis.executed.ipynb
 /data-platform/DataPipeline/.ipynb_checkpoints/
+/data-platform/docs/
 *.pkl
 
 # Cache e bytecode do Python
