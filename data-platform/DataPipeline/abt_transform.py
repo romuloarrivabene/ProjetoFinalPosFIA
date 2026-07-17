@@ -158,6 +158,128 @@ def run_abt_generation(conn_id: str, config: dict):
     try:
         cursor.execute(sql_elt)
         conn.commit()
+
+        # Visao enxuta para o dashboard academico no Metabase. Ela evita expor
+        # todas as features do modelo e concentra apenas indicadores de negocio.
+        cursor.execute(f"""
+            CREATE OR REPLACE VIEW credit_dashboard AS
+            SELECT
+                sk_id_curr,
+                target,
+                CASE
+                    WHEN target = 1 THEN 'Inadimplente'
+                    ELSE 'Adimplente'
+                END AS credit_status,
+                age,
+                CASE
+                    WHEN age < 30 THEN '1 - Ate 29 anos'
+                    WHEN age < 40 THEN '2 - 30 a 39 anos'
+                    WHEN age < 50 THEN '3 - 40 a 49 anos'
+                    WHEN age < 60 THEN '4 - 50 a 59 anos'
+                    ELSE '5 - 60 anos ou mais'
+                END AS age_group,
+                amt_income_total,
+                amt_credit,
+                amt_annuity,
+                fe_credit_income_percent,
+                inst_late_payment_rate
+            FROM "{abt_table}";
+        """)
+
+        # Visao detalhada para analise dos segmentos em que o risco se concentra.
+        # As colunas *_order permitem ordenar corretamente as faixas no Metabase.
+        cursor.execute(f"""
+            CREATE OR REPLACE VIEW credit_risk_dashboard AS
+            SELECT
+                sk_id_curr,
+                target,
+                CASE
+                    WHEN target = 1 THEN 'Inadimplente'
+                    ELSE 'Adimplente'
+                END AS credit_status,
+                age,
+                CASE
+                    WHEN age < 30 THEN '1 - Ate 29 anos'
+                    WHEN age < 40 THEN '2 - 30 a 39 anos'
+                    WHEN age < 50 THEN '3 - 40 a 49 anos'
+                    WHEN age < 60 THEN '4 - 50 a 59 anos'
+                    ELSE '5 - 60 anos ou mais'
+                END AS age_group,
+                CASE
+                    WHEN age < 30 THEN 1
+                    WHEN age < 40 THEN 2
+                    WHEN age < 50 THEN 3
+                    WHEN age < 60 THEN 4
+                    ELSE 5
+                END AS age_group_order,
+                code_gender AS gender,
+                name_income_type AS income_type,
+                name_education_type AS education_type,
+                occupation_type,
+                region_rating_client_w_city AS region_rating,
+                amt_income_total,
+                NTILE(5) OVER (ORDER BY amt_income_total) AS income_quintile_order,
+                CONCAT(
+                    'Q',
+                    NTILE(5) OVER (ORDER BY amt_income_total),
+                    CASE NTILE(5) OVER (ORDER BY amt_income_total)
+                        WHEN 1 THEN ' - menor renda'
+                        WHEN 5 THEN ' - maior renda'
+                        ELSE ''
+                    END
+                ) AS income_quintile,
+                amt_credit,
+                amt_annuity,
+                fe_credit_income_percent AS credit_income_ratio,
+                fe_annuity_income_percent AS annuity_income_ratio,
+                CASE
+                    WHEN fe_credit_income_percent <= 2 THEN '1 - Ate 2x a renda'
+                    WHEN fe_credit_income_percent <= 4 THEN '2 - De 2x a 4x'
+                    WHEN fe_credit_income_percent <= 6 THEN '3 - De 4x a 6x'
+                    ELSE '4 - Acima de 6x'
+                END AS credit_income_band,
+                CASE
+                    WHEN fe_credit_income_percent <= 2 THEN 1
+                    WHEN fe_credit_income_percent <= 4 THEN 2
+                    WHEN fe_credit_income_percent <= 6 THEN 3
+                    ELSE 4
+                END AS credit_income_band_order,
+                has_prev_app,
+                prev_refused_rate,
+                has_bureau,
+                bureau_debt_credit_ratio,
+                bureau_overdue_count,
+                CASE
+                    WHEN has_bureau = 0 THEN '0 - Sem historico'
+                    WHEN bureau_overdue_count = 0 THEN '1 - Sem vencidos'
+                    WHEN bureau_overdue_count <= 2 THEN '2 - De 1 a 2 vencidos'
+                    ELSE '3 - Tres ou mais vencidos'
+                END AS bureau_overdue_band,
+                CASE
+                    WHEN has_bureau = 0 THEN 0
+                    WHEN bureau_overdue_count = 0 THEN 1
+                    WHEN bureau_overdue_count <= 2 THEN 2
+                    ELSE 3
+                END AS bureau_overdue_band_order,
+                has_installments_history,
+                inst_late_payment_rate,
+                CASE
+                    WHEN has_installments_history = 0 THEN '0 - Sem historico'
+                    WHEN inst_late_payment_rate = 0 THEN '1 - Sem atraso'
+                    WHEN inst_late_payment_rate <= 0.10 THEN '2 - Ate 10% em atraso'
+                    WHEN inst_late_payment_rate <= 0.30 THEN '3 - De 10% a 30%'
+                    ELSE '4 - Acima de 30%'
+                END AS late_payment_band,
+                CASE
+                    WHEN has_installments_history = 0 THEN 0
+                    WHEN inst_late_payment_rate = 0 THEN 1
+                    WHEN inst_late_payment_rate <= 0.10 THEN 2
+                    WHEN inst_late_payment_rate <= 0.30 THEN 3
+                    ELSE 4
+                END AS late_payment_band_order
+            FROM "{abt_table}";
+        """)
+        conn.commit()
         
         print("[LIXEIRA] Limpando tabelas temporárias agregadas...")
         cursor.execute("DROP TABLE IF EXISTS tmp_prev_application_agg CASCADE;")

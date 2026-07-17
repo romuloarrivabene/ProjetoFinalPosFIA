@@ -91,6 +91,7 @@ airflow/data/csv
 | `airflow-init` | `airflow/` | PostgreSQL saudável | Migração, usuário, pools e permissões. |
 | `airflow-webserver` | `airflow/` | inicialização concluída | Interface e API do Airflow. |
 | `airflow-scheduler` | `airflow/` | inicialização concluída | Agendamento e execução das tarefas. |
+| `metabase` | `metabase/metabase` | PostgreSQL | Dashboard simplificado de risco de crédito. |
 | `jupyter` | `jupyter/` | PostgreSQL | Ambiente de exploração e modelagem. |
 | `credit-api` | `MLOps/Dockerfile.api` | PostgreSQL e artefato | Inferência e política de crédito. |
 | `credit-frontend` | `MLOps/Dockerfile.frontend` | API | Interface demonstrativa. |
@@ -102,6 +103,7 @@ airflow/data/csv
 | PostgreSQL | Persistência das fontes, tabelas tratadas e ABT | [postgres/README.md](./postgres/README.md) |
 | Airflow | Orquestração ponta a ponta do pipeline | [airflow/README.md](./airflow/README.md) |
 | DataPipeline | Ingestão, limpeza, agregações e ABT | [DataPipeline/README.md](./DataPipeline/README.md) |
+| Metabase | Indicadores executivos da ABT | Seção [Dashboard no Metabase](#dashboard-no-metabase) |
 | Jupyter | Ambiente dos notebooks de análise e modelagem | [jupyter/README.md](./jupyter/README.md) |
 | Model | Seleção, treinamento, avaliação e inferência local | [Model/README.md](./Model/README.md) |
 | MLOps | API, política de crédito, frontend e testes | [MLOps/README.md](./MLOps/README.md) |
@@ -237,6 +239,12 @@ Notebooks:
 docker compose up -d --build jupyter
 ```
 
+Dashboard:
+
+```bash
+docker compose up -d postgres metabase
+```
+
 Serviço de predição:
 
 ```bash
@@ -248,6 +256,7 @@ docker compose up -d --build postgres credit-api credit-frontend
 | Componente | URL | Credencial |
 |---|---|---|
 | Airflow | http://localhost:8080 | `admin` / `admin` |
+| Metabase | http://localhost:3000 | definida no primeiro acesso |
 | JupyterLab | http://localhost:8888 | `JUPYTER_TOKEN` |
 | Swagger da API | http://localhost:8000/docs | — |
 | Health check | http://localhost:8000/health | — |
@@ -261,6 +270,62 @@ docker compose up -d --build postgres credit-api credit-frontend
 4. Acompanhe as tarefas até o treinamento e a persistência do modelo.
 
 Detalhes das tarefas, pools e entradas estão no [README do Airflow](./airflow/README.md).
+
+## Dashboard no Metabase
+
+O pipeline cria a visão `credit_dashboard` no banco `data` junto com a
+`application_abt`. A visão reduz o dashboard aos campos necessários para uma
+leitura executiva e é recriada a cada execução do pipeline.
+
+No primeiro acesso ao Metabase, crie o usuário administrador e cadastre o banco
+analítico com estes dados:
+
+| Campo | Valor |
+|---|---|
+| Tipo | PostgreSQL |
+| Host | `postgres` |
+| Porta | `5432` |
+| Banco | `data` |
+| Usuário | `airflow` |
+| Senha | `airflow` |
+
+Crie um dashboard chamado **Visão de Risco de Crédito** usando a visão
+`credit_dashboard` e apenas quatro cartões:
+
+| Cartão | Resumo no Metabase | Visualização |
+|---|---|---|
+| Clientes analisados | Contagem de linhas | Número |
+| Taxa de inadimplência | Média de `target`, formatada como percentual | Número |
+| Crédito médio | Média de `amt_credit`, formatada como moeda | Número |
+| Inadimplência por idade | Média de `target`, agrupada por `age_group` | Barras |
+
+Se o Metabase tiver sido aberto antes da execução do pipeline, sincronize o
+esquema em **Administração → Bancos de dados → Sincronizar esquema agora**.
+
+### Dashboard avançado de risco
+
+O pipeline também cria a visão `credit_risk_dashboard`, voltada à análise dos
+segmentos em que a inadimplência se concentra. Além dos valores originais, ela
+oferece dimensões prontas para o Metabase:
+
+| Dimensão | Interpretação |
+|---|---|
+| `age_group` | Faixas etárias de até 29 a 60 anos ou mais. |
+| `income_quintile` | Cinco grupos de renda com volumes semelhantes de clientes. |
+| `credit_income_band` | Crédito solicitado em múltiplos da renda anual declarada. |
+| `late_payment_band` | Intensidade de atrasos no histórico de parcelas. |
+| `bureau_overdue_band` | Quantidade de contratos vencidos no bureau. |
+
+Cada dimensão de faixa possui uma coluna homônima terminada em `_order` para
+ordenações customizadas. Os próprios rótulos também começam com a sequência
+correta, facilitando a ordenação alfabética no Metabase. O dashboard
+recomendado, **Diagnóstico Avançado de Risco**, combina:
+
+- indicadores de clientes, inadimplência, volume de crédito e relação
+  crédito/renda;
+- inadimplência por tipo de renda, escolaridade e comprometimento de renda;
+- atraso em parcelas e ocorrências vencidas no bureau;
+- filtros por faixa etária, situação, renda, escolaridade, gênero e histórico.
 
 ## Preparação manual dos CSVs de entrega
 
